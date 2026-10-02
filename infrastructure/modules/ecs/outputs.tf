@@ -27,3 +27,8 @@ output "log_group_name" {
   description = "Nome do CloudWatch Log Group do serviço"
   value       = aws_cloudwatch_log_group.this.name
 }
+
+output "service_arn" {
+  description = "ARN do serviço ECS"
+  value       = aws_ecs_service.this.id
+}

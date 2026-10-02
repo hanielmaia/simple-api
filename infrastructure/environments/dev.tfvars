@@ -81,3 +81,13 @@ db_skip_final_snapshot   = true
 
 # O repo usa subject claims imutáveis (ver: gh api repos/<owner>/<repo>/actions/oidc/customization/sub)
 github_oidc_extra_subject_prefixes = ["repo:hanielmaia@199696858/simple-api@1402220174"]
+
+#==========================================================================
+# EXPOSIÇÃO, RESILIÊNCIA E FINOPS
+#==========================================================================
+expose_mode              = "apigw"
+use_spot                 = true
+autoscaling_max_capacity = 0
+schedule_enabled         = true
+# alert_email            = "voce@exemplo.com"  # habilita alarmes CloudWatch e Budget
+budget_limit_usd = 50 # Budget da conta, criado só em dev (precisa de alert_email)

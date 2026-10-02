@@ -59,7 +59,7 @@ health_check_path     = "/"
 container_image_tag   = "bootstrap"
 task_cpu              = 256
 task_memory           = 512
-desired_count         = 1
+desired_count         = 2
 log_retention_in_days = 14
 ecr_max_images        = 10
 
@@ -77,3 +77,12 @@ db_backup_retention_days    = 7
 db_deletion_protection      = true
 db_skip_final_snapshot      = false
 create_github_oidc_provider = false
+
+#==========================================================================
+# EXPOSIÇÃO, RESILIÊNCIA E FINOPS
+#==========================================================================
+expose_mode              = "alb"
+use_spot                 = false
+autoscaling_max_capacity = 4
+schedule_enabled         = false
+# alert_email            = "voce@exemplo.com"  # habilita alarmes CloudWatch e Budget

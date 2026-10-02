@@ -1,0 +1,12 @@
+{
+  "ingress": [],
+  "egress": [
+    {
+      "description": "Allow traffic to the application port inside the VPC only",
+      "from_port": 3000,
+      "to_port": 3000,
+      "protocol": "tcp",
+      "cidr_blocks": ["${VPC_CIDR}"]
+    }
+  ]
+}

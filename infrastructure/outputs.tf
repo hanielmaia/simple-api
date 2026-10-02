@@ -1,6 +1,6 @@
-output "alb_dns_name" {
-  description = "URL pública da API (http://<dns>/ e /connect)"
-  value       = module.alb.alb_dns_name
+output "api_url" {
+  description = "URL pública da API (GET / e GET /connect)"
+  value       = local.use_alb ? "http://${module.alb[0].alb_dns_name}" : module.api_gateway[0].invoke_url
 }
 
 output "ecr_repository_url" {

@@ -80,3 +80,12 @@ db_skip_final_snapshot   = true
 
 # O provider OIDC é único por conta e já é criado pelo ambiente dev
 create_github_oidc_provider = false
+
+#==========================================================================
+# EXPOSIÇÃO, RESILIÊNCIA E FINOPS
+#==========================================================================
+expose_mode              = "apigw"
+use_spot                 = true
+autoscaling_max_capacity = 0
+schedule_enabled         = true
+# alert_email            = "voce@exemplo.com"  # habilita alarmes CloudWatch e Budget

@@ -66,3 +66,9 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "deregistration_delay" {
+  description = "Segundos de connection draining ao remover um target"
+  type        = number
+  default     = 30
+}

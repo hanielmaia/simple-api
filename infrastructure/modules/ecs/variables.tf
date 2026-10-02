@@ -115,3 +115,33 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "use_spot" {
+  description = "Usa Fargate Spot (mais barato, pode ser interrompido): recomendado só fora de produção"
+  type        = bool
+  default     = false
+}
+
+variable "health_check_grace_period" {
+  description = "Segundos que o ECS ignora health checks do LB após subir a task"
+  type        = number
+  default     = 30
+}
+
+variable "service_registry_arn" {
+  description = "ARN do serviço Cloud Map onde as tasks se registram (null = sem service discovery)"
+  type        = string
+  default     = null
+}
+
+variable "autoscaling_max_capacity" {
+  description = "Máximo de tasks do autoscaling (<= desired_count desativa)"
+  type        = number
+  default     = 0
+}
+
+variable "autoscaling_cpu_target" {
+  description = "CPU média alvo (%) do target tracking"
+  type        = number
+  default     = 60
+}

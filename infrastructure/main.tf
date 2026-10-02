@@ -10,6 +10,10 @@ locals {
 
   # ECS/RDS só em subnets privadas; ALB/NAT nas públicas
   nat_keys = var.nat_per_az ? range(length(var.public_subnet_names)) : [0]
+
+  # Modo de exposição: "alb" (resiliência, prod) ou "apigw" (API Gateway + VPC Link + Cloud Map, FinOps)
+  use_alb   = var.expose_mode == "alb"
+  use_apigw = var.expose_mode == "apigw"
 }
 
 data "aws_caller_identity" "current" {}
@@ -115,13 +119,20 @@ module "rt_association_private" {
 # SECURITY GROUPS (regras em config/security_rules/*.json)
 #==========================================================================
 locals {
+  # SG da camada de entrada que pode falar com as tasks (ALB ou VPC Link)
+  entry_sg_id = local.use_alb ? module.sg_alb[0].security_group_id : module.sg_vpclink[0].security_group_id
+
+  sg_rules_vpclink = jsondecode(replace(
+    file("${path.module}/config/security_rules/rules-sg-vpclink.json"),
+    "$${VPC_CIDR}", var.vpc_cidr_block
+  ))
   sg_rules_alb = jsondecode(replace(
     file("${path.module}/config/security_rules/rules-sg-alb.json"),
     "$${VPC_CIDR}", var.vpc_cidr_block
   ))
   sg_rules_ecs = jsondecode(replace(replace(
     file("${path.module}/config/security_rules/rules-sg-ecs.json"),
-    "$${ALB_SG_ID}", module.sg_alb.security_group_id),
+    "$${ALB_SG_ID}", local.entry_sg_id),
     "$${VPC_CIDR}", var.vpc_cidr_block
   ))
   sg_rules_rds = jsondecode(replace(
@@ -131,6 +142,7 @@ locals {
 }
 
 module "sg_alb" {
+  count         = local.use_alb ? 1 : 0
   source        = "./modules/security/security-group"
   name          = "${local.name}-alb-sg"
   description   = "ALB publico ${local.name}"
@@ -150,6 +162,17 @@ module "sg_ecs" {
   tags          = { Name = "${local.name}-ecs-sg" }
 }
 
+module "sg_vpclink" {
+  count         = local.use_apigw ? 1 : 0
+  source        = "./modules/security/security-group"
+  name          = "${local.name}-vpclink-sg"
+  description   = "VPC Link do API Gateway ${local.name}"
+  vpc_id        = module.vpc.vpc_id
+  ingress_rules = local.sg_rules_vpclink.ingress
+  egress_rules  = local.sg_rules_vpclink.egress
+  tags          = { Name = "${local.name}-vpclink-sg" }
+}
+
 module "sg_rds" {
   source        = "./modules/security/security-group"
   name          = "${local.name}-rds-sg"
@@ -164,14 +187,16 @@ module "sg_rds" {
 # ALB -> TARGET GROUP -> LISTENER
 #==========================================================================
 module "alb" {
+  count              = local.use_alb ? 1 : 0
   source             = "./modules/network/alb"
   name               = "${local.name}-alb"
-  security_group_ids = [module.sg_alb.security_group_id]
+  security_group_ids = [module.sg_alb[0].security_group_id]
   subnet_ids         = local.public_subnet_ids
   tags               = { Name = "${local.name}-alb" }
 }
 
 module "target_group" {
+  count             = local.use_alb ? 1 : 0
   source            = "./modules/network/target-group"
   name              = "${local.name}-tg"
   port              = var.app_port
@@ -181,9 +206,10 @@ module "target_group" {
 }
 
 module "listener" {
+  count             = local.use_alb ? 1 : 0
   source            = "./modules/network/listener"
-  load_balancer_arn = module.alb.alb_arn
-  target_group_arn  = module.target_group.target_group_arn
+  load_balancer_arn = module.alb[0].alb_arn
+  target_group_arn  = module.target_group[0].target_group_arn
   port              = 80
   protocol          = "HTTP"
 }
@@ -314,7 +340,11 @@ module "ecs" {
   subnet_ids         = local.private_subnet_ids
   security_group_ids = [module.sg_ecs.security_group_id]
   assign_public_ip   = false
-  target_group_arn   = module.target_group.target_group_arn
+  target_group_arn   = local.use_alb ? module.target_group[0].target_group_arn : null
+
+  service_registry_arn     = local.use_apigw ? module.service_discovery[0].service_arn : null
+  use_spot                 = var.use_spot
+  autoscaling_max_capacity = var.autoscaling_max_capacity
 
   environment_variables = [
     { name = "API_PORT", value = tostring(var.app_port) },
@@ -340,4 +370,81 @@ module "github_oidc" {
   ecr_repository_arn = module.ecr.repository_arn
   ecs_service_arn    = "arn:aws:ecs:${var.region}:${data.aws_caller_identity.current.account_id}:service/${module.ecs.cluster_name}/${module.ecs.service_name}"
   pass_role_arns     = [module.iam_execution.role_arn, module.iam_task.role_arn]
+}
+
+#==========================================================================
+# MODO API GATEWAY (FinOps): HTTP API -> VPC Link -> Cloud Map -> ECS, sem ALB
+#==========================================================================
+module "service_discovery" {
+  count          = local.use_apigw ? 1 : 0
+  source         = "./modules/service-discovery"
+  namespace_name = "${local.name}.local"
+  service_name   = "simple-api"
+  vpc_id         = module.vpc.vpc_id
+}
+
+module "api_gateway" {
+  count                 = local.use_apigw ? 1 : 0
+  source                = "./modules/api-gateway"
+  name                  = "${local.name}-api"
+  subnet_ids            = local.private_subnet_ids
+  security_group_ids    = [module.sg_vpclink[0].security_group_id]
+  cloud_map_service_arn = module.service_discovery[0].service_arn
+  log_retention_in_days = var.log_retention_in_days
+}
+
+#==========================================================================
+# FINOPS / OBSERVABILIDADE
+#==========================================================================
+# Endpoint S3 (gateway, gratuito): o pull das imagens do ECR deixa de ser cobrado como tráfego do NAT
+module "vpc_endpoint_s3" {
+  source          = "./modules/network/vpc-endpoint-s3"
+  vpc_id          = module.vpc.vpc_id
+  route_table_ids = module.route_table_private.route_table_ids
+  tags            = { Name = "${local.name}-s3-endpoint" }
+}
+
+# Desliga as tasks fora do horário comercial (só ambientes não produtivos)
+module "scheduler" {
+  count           = var.schedule_enabled ? 1 : 0
+  source          = "./modules/scheduler"
+  name            = local.name
+  cluster_name    = module.ecs.cluster_name
+  service_name    = module.ecs.service_name
+  ecs_service_arn = module.ecs.service_arn
+  desired_count   = var.desired_count
+  scale_down_cron = var.scale_down_cron
+  scale_up_cron   = var.scale_up_cron
+}
+
+module "observability" {
+  source           = "./modules/observability"
+  name             = local.name
+  alert_email      = var.alert_email
+  budget_limit_usd = var.budget_limit_usd
+  cluster_name     = module.ecs.cluster_name
+  service_name     = module.ecs.service_name
+  db_identifier    = "${local.name}-db"
+
+  alb_arn_suffix          = local.use_alb ? module.alb[0].alb_arn_suffix : null
+  target_group_arn_suffix = local.use_alb ? module.target_group[0].target_group_arn_suffix : null
+  api_id                  = local.use_apigw ? module.api_gateway[0].api_id : null
+}
+
+# Preserva o estado ao transformar os módulos do ALB em condicionais
+moved {
+  from = module.alb
+  to   = module.alb[0]
+}
+moved {
+  from = module.target_group
+  to   = module.target_group[0]
+}
+moved {
+  from = module.listener
+  to   = module.listener[0]
+}
+moved {
+  from = module.sg_alb
+  to   = module.sg_alb[0]
 }

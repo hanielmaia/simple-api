@@ -5,6 +5,9 @@ resource "aws_lb_target_group" "this" {
   vpc_id      = var.vpc_id
   target_type = var.target_type
 
+  # Draining curto: a app é stateless, então deploys e scale-in terminam rápido
+  deregistration_delay = var.deregistration_delay
+
   health_check {
     path                = var.health_check_path
     protocol            = var.protocol

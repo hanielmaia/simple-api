@@ -143,3 +143,57 @@ variable "github_oidc_extra_subject_prefixes" {
   type        = list(string)
   default     = []
 }
+
+#==========================================================================
+# EXPOSIÇÃO, RESILIÊNCIA E FINOPS
+#==========================================================================
+variable "expose_mode" {
+  description = "alb = ALB público (resiliência, prod); apigw = API Gateway + VPC Link + Cloud Map (sem custo fixo de ALB)"
+  type        = string
+  default     = "alb"
+
+  validation {
+    condition     = contains(["alb", "apigw"], var.expose_mode)
+    error_message = "expose_mode deve ser \"alb\" ou \"apigw\"."
+  }
+}
+
+variable "use_spot" {
+  description = "Fargate Spot (mais barato, interrompível): só fora de produção"
+  type        = bool
+  default     = false
+}
+
+variable "autoscaling_max_capacity" {
+  description = "Máximo de tasks no autoscaling por CPU (<= desired_count desativa)"
+  type        = number
+  default     = 0
+}
+
+variable "schedule_enabled" {
+  description = "Zera as tasks fora do horário comercial (não usar em prod)"
+  type        = bool
+  default     = false
+}
+
+variable "scale_down_cron" {
+  type    = string
+  default = "cron(0 20 ? * MON-FRI *)"
+}
+
+variable "scale_up_cron" {
+  type    = string
+  default = "cron(0 8 ? * MON-FRI *)"
+}
+
+variable "alert_email" {
+  description = "E-mail para alarmes e Budget (vazio = não cria)"
+  type        = string
+  default     = ""
+}
+
+variable "budget_limit_usd" {
+  description = "Limite mensal do Budget em USD (0 = não cria); crie em um único ambiente"
+  type        = number
+  default     = 0
+}
