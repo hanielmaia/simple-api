@@ -2,7 +2,7 @@
   <img src="https://media.licdn.com/dms/image/v2/D4D0BAQFqqkJoRRTbvg/company-logo_200_200/B4DZzUkmmOIwAI-/0/1773092891383/kxctecnologia_logo?e=2147483647&v=beta&t=ur-oxF2eamhQF4g4fDQjh6sy1lmH9W7pnOIrNAYOOzg" alt="KXC Tecnologia" width="120" />
 </p>
 
-# Simple-api — Desafio Técnico KXC (Arquiteto Cloud)
+# Simple-api — Desafio Técnico KXC
 
 API Node.js + PostgreSQL provisionada na AWS 100% via Terraform, com CI/CD no GitHub Actions. A arquitetura foi desenhada em torno de três critérios: **organizada** (módulos reutilizáveis, um código para todos os ambientes), **segura** (rede privada, least privilege, sem chaves estáticas) e **resiliente** (Multi-AZ, rollback automático, autoscaling), sem abrir mão de **FinOps**.
 
@@ -128,5 +128,5 @@ Observação: interface endpoints (ECR, SSM, Logs) **não** foram usados porque,
 - Rotação automática da senha do banco (Secrets Manager) como evolução.
 
 <p align="center">
-  Desafio: José Neto (KXC) · Solução: Haniel Maia
+  Solução: Haniel Maia
 </p>
