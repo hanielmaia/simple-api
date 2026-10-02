@@ -16,6 +16,10 @@ ENV NODE_ENV=production \
     API_PORT=3000
 WORKDIR /app
 
+# Patches de segurança do SO; o npm/npx não são necessários em runtime (menor superfície e sem CVEs do npm embutido)
+RUN apk upgrade --no-cache \
+ && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx /opt/yarn* /usr/local/bin/yarn*
+
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 COPY --chown=node:node package.json ./
 COPY --chown=node:node src ./src
