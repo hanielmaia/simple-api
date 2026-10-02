@@ -334,7 +334,7 @@ module "github_oidc" {
   source = "./modules/security/github-oidc"
 
   role_name          = "${local.name}-github-deploy"
-  github_repo        = var.github_repo
+  subject_prefixes   = concat(["repo:${var.github_repo}"], var.github_oidc_extra_subject_prefixes)
   branch             = var.github_branch
   create_provider    = var.create_github_oidc_provider
   ecr_repository_arn = module.ecr.repository_arn

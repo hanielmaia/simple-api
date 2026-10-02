@@ -30,7 +30,7 @@ data "aws_iam_policy_document" "assume" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:ref:refs/heads/${var.branch}"]
+      values   = [for p in var.subject_prefixes : "${p}:ref:refs/heads/${var.branch}"]
     }
   }
 }

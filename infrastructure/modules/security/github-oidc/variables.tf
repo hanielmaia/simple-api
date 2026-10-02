@@ -1,10 +1,5 @@
 variable "role_name" { type = string }
 
-variable "github_repo" {
-  description = "owner/repo autorizado a assumir a role"
-  type        = string
-}
-
 variable "branch" {
   description = "Branch autorizada a fazer deploy"
   type        = string
@@ -28,4 +23,9 @@ variable "pass_role_arns" {
 variable "tags" {
   type    = map(string)
   default = {}
+}
+
+variable "subject_prefixes" {
+  description = "Prefixos do claim sub (formato clássico repo:owner/repo e/ou o imutável repo:owner@id/repo@id)"
+  type        = list(string)
 }

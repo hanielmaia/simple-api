@@ -137,3 +137,9 @@ variable "create_github_oidc_provider" {
   type        = bool
   default     = true
 }
+
+variable "github_oidc_extra_subject_prefixes" {
+  description = "Prefixos extras do claim sub (repos com 'immutable subject claims' emitem repo:owner@id/repo@id)"
+  type        = list(string)
+  default     = []
+}
