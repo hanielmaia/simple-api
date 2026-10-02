@@ -17,6 +17,7 @@ variable "type" {
 variable "value" {
   description = "Valor do parâmetro"
   type        = string
+  sensitive   = true
 }
 
 variable "tags" {

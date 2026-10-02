@@ -2,33 +2,40 @@
   "ingress": [
     {
       "description": "Allow application traffic from ALB only",
-      "from_port": 8084,
-      "to_port": 8084,
+      "from_port": 3000,
+      "to_port": 3000,
       "protocol": "tcp",
       "security_groups": ["${ALB_SG_ID}"]
     }
   ],
   "egress": [
     {
-      "description": "Allow HTTPS outbound for container image pulls and AWS API calls",
+      "description": "Allow HTTPS outbound for ECR pulls, SSM secrets and CloudWatch Logs (via NAT)",
       "from_port": 443,
       "to_port": 443,
       "protocol": "tcp",
       "cidr_blocks": ["0.0.0.0/0"]
     },
     {
+      "description": "Allow PostgreSQL to the RDS inside the VPC",
+      "from_port": 5432,
+      "to_port": 5432,
+      "protocol": "tcp",
+      "cidr_blocks": ["${VPC_CIDR}"]
+    },
+    {
       "description": "Allow DNS resolution (UDP)",
       "from_port": 53,
       "to_port": 53,
       "protocol": "udp",
-      "cidr_blocks": ["0.0.0.0/0"]
+      "cidr_blocks": ["${VPC_CIDR}"]
     },
     {
       "description": "Allow DNS resolution (TCP)",
       "from_port": 53,
       "to_port": 53,
       "protocol": "tcp",
-      "cidr_blocks": ["0.0.0.0/0"]
+      "cidr_blocks": ["${VPC_CIDR}"]
     }
   ]
 }

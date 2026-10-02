@@ -78,6 +78,7 @@ resource "aws_ecs_service" "this" {
   tags = var.tags
 
   lifecycle {
-    ignore_changes = [desired_count]
+    # O CI/CD registra novas revisions da task definition; o Terraform não deve revertê-las
+    ignore_changes = [desired_count, task_definition]
   }
 }

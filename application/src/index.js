@@ -1,5 +1,13 @@
 const { Client } = require('pg');
 const express = require('express');
+const fs = require('fs');
+
+// DB_SSL=true habilita TLS (obrigatório no RDS PostgreSQL 15+). Valida o certificado com o bundle de CA da RDS.
+const RDS_CA_PATH = process.env.DB_SSL_CA || '/app/certs/rds-global-bundle.pem'
+const dbSsl = process.env.DB_SSL === 'true'
+    ? { ca: fs.readFileSync(RDS_CA_PATH).toString(), rejectUnauthorized: true }
+    : undefined;
+
 
 (async () => {
     const app = express()
@@ -29,6 +37,7 @@ const express = require('express');
                 database: process.env.DB_DATABASE,
                 password: process.env.DB_PASSWORD,
                 port: process.env.DB_PORT || 5432,
+                ssl: dbSsl,
             })
             await client.connect()
 

@@ -2,26 +2,19 @@
   "ingress": [
     {
       "description": "Allow HTTP from internet",
-      "from_port": 8080,
-      "to_port": 8080,
-      "protocol": "tcp",
-      "cidr_blocks": ["0.0.0.0/0"]
-    },
-    {
-      "description": "Allow HTTPS from internet",
-      "from_port": 443,
-      "to_port": 443,
+      "from_port": 80,
+      "to_port": 80,
       "protocol": "tcp",
       "cidr_blocks": ["0.0.0.0/0"]
     }
   ],
   "egress": [
     {
-      "description": "Allow all outbound traffic",
-      "from_port": 0,
-      "to_port": 0,
-      "protocol": "-1",
-      "cidr_blocks": ["0.0.0.0/0"]
+      "description": "Allow traffic to the application port inside the VPC only",
+      "from_port": 3000,
+      "to_port": 3000,
+      "protocol": "tcp",
+      "cidr_blocks": ["${VPC_CIDR}"]
     }
   ]
 }

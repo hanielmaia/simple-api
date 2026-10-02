@@ -1,0 +1,12 @@
+{
+  "ingress": [
+    {
+      "description": "Allow PostgreSQL from ECS tasks only",
+      "from_port": 5432,
+      "to_port": 5432,
+      "protocol": "tcp",
+      "security_groups": ["${ECS_SG_ID}"]
+    }
+  ],
+  "egress": []
+}
