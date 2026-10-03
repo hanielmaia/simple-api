@@ -1,5 +1,7 @@
 # Simple-api — Infraestrutura (Terraform)
 
+> **Status:** a composição está completa e foi aplicada em dev e prod. Arquitetura, decisões, problemas encontrados e custos estão no [README da raiz](../README.md). O texto abaixo é o enunciado original do desafio, mantido como referência.
+
 Infraestrutura como código (IaC) para provisionar e expor publicamente a **simple-api** (Node.js + PostgreSQL) na AWS, usando Amazon ECS (Fargate) atrás de um Application Load Balancer, dentro de uma VPC isolada criada por você.
 
 Este repositório faz parte do **Desafio Técnico KXC**. O objetivo não é só "fazer rodar", mas avaliar como você estrutura ambientes em nuvem, automatiza entregas e organiza sua infraestrutura (organização, segurança e resiliência).
@@ -18,7 +20,7 @@ Este repositório faz parte do **Desafio Técnico KXC**. O objetivo não é só 
 - **Security Groups**: revise as regras em `config/security_rules/`. Verifique se o fluxo *internet → ALB → ECS → aplicação* está realmente liberado ponta a ponta.
 - **Encadeamento dos módulos**: o ALB, o Target Group e o Listener estão em módulos separados e precisam ser conectados corretamente entre si e ao serviço ECS.
 - **Placeholders**: alguns arquivos de config usam marcadores como `${ALB_SG_ID}` e `${NAT_GW_ID}` que precisam ser resolvidos na composição raiz.
-- **Arquivos de composição**: `main.tf` e `variables.tf` (raiz) estão propositalmente vazios, e os `*.tfvars` estão incompletos — cabe a você montar a chamada dos módulos e completar as variáveis.
+- **Arquivos de composição**: `main.tf` e `variables.tf` (raiz) estavam vazios e os `*.tfvars` incompletos. *(Resolvido: ver README da raiz.)*
 
 Documente os problemas que encontrou e como os corrigiu. Isso faz parte da avaliação.
 
@@ -61,10 +63,10 @@ Documente os problemas que encontrou e como os corrigiu. Isso faz parte da avali
 
 ```
 infrastructure/
-├── main.tf                 # (vazio) composição raiz dos módulos — a completar
-├── variables.tf            # (vazio) variáveis raiz — a completar
+├── main.tf                 # composição raiz dos módulos
+├── variables.tf            # variáveis raiz
 ├── environments/
-│   ├── dev.tfvars          # rede pronta; demais variáveis a completar
+│   ├── dev.tfvars          # um tfvars por ambiente (dev/hml/prod)
 │   ├── hml.tfvars
 │   └── prod.tfvars
 ├── config/

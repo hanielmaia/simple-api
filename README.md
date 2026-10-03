@@ -131,6 +131,8 @@ Observação: interface endpoints (ECR, SSM, Logs) **não** foram usados porque,
 
 ## Limitações conhecidas e próximos passos
 
+- **Checkov** roda em modo informativo (`soft_fail`). Achados aceitos conscientemente: ALB só HTTP (sem domínio), SSM com a chave KMS padrão da AWS em vez de CMK e policies de pipeline com `Resource: *` apenas nas ações que a API do ECS/ECR não permite restringir.
+
 - **HTTPS no ALB**: sem domínio/certificado ACM, o ALB de prod serve só HTTP. O API Gateway já expõe HTTPS na URL padrão. Próximo passo: ACM + listener 443 com redirecionamento do 80.
 - **State remoto** em S3 (versionado, criptografado, só TLS, lock nativo), um workspace por ambiente; o bucket é criado por `infrastructure/bootstrap`. A senha do banco fica no state, por isso o bucket é privado e o state nunca é versionado no Git. O bucket de state em si usa state local (limitação do bootstrap).
 - **WAF** na frente do ALB/API Gateway não implementado.
