@@ -96,10 +96,17 @@ Depois configure a variável `AWS_ROLE_ARN` no GitHub com o output `github_deplo
 | 11 | RDS PostgreSQL 16 exige **TLS**; a app conectava sem SSL | Suporte `DB_SSL` na app, validando o certificado com o bundle de CA da RDS embutido na imagem |
 | 12 | Meu código novo no `index.js` virou chamada acidental (ASI, app sem `;`) e o container saía sem logar | `;` explícito; testado localmente antes do deploy |
 | 13 | `db.t4g.micro` sem capacidade na região | `db.t3.micro` (também Free Tier); tipo de storage virou variável |
-| 14 | Provider AWS: "inconsistent final plan" em SGs com regras dinâmicas | Reexecutar o apply converge; ideal futuro: `aws_vpc_security_group_*_rule` |
+| 14 | Provider AWS: "inconsistent final plan" em SGs com regras dinâmicas (ocorreu em dev e em prod) | Reexecutar o apply converge; ideal futuro: `aws_vpc_security_group_*_rule` |
 | 15 | Trust policy OIDC recusada: o repo usa **subject claims imutáveis** | A trust aceita os dois formatos, ainda restrita a repo e branch |
 | 16 | Scan do Trivy bloqueou o deploy (OpenSSL e dependências) | `npm audit fix`, `apk upgrade` e npm removido da imagem final (0 CVEs HIGH) |
 | 17 | Migrar um ambiente existente de ALB para API Gateway trava: o SG do ALB não é apagado enquanto o SG do ECS ainda o referencia | Atualizar antes a regra do SG do ECS e então rodar o apply. Não ocorre em ambientes novos |
+
+## Validação em execução (prod)
+
+Aplicado na conta de teste, validado e destruído em seguida:
+- `GET /` e `GET /connect` pelo ALB, com PostgreSQL 16.13.
+- 2 tasks saudáveis, uma em cada AZ (`us-east-1a` e `us-east-1b`); RDS Multi-AZ, criptografado e com deletion protection; autoscaling de 2 a 4 tasks.
+- **Teste de queda**: uma task foi encerrada com requisições contínuas (60 s): **60 de 60 respostas 200**, e o serviço voltou sozinho para 2 tasks.
 
 ## FinOps
 
@@ -124,7 +131,9 @@ Observação: interface endpoints (ECR, SSM, Logs) **não** foram usados porque,
 - **State local** (um workspace por ambiente). Em produção: backend S3 com lock e criptografia (bloco já preparado em `versions.tf`). A senha do banco fica no state, por isso ele não é versionado.
 - **WAF** na frente do ALB/API Gateway não implementado.
 - **Deploy do Terraform** é manual; a pipeline faz apenas `fmt`, `validate` e Checkov. Um job de `plan`/`apply` exigiria uma role separada de maior privilégio.
-- **hml/prod** estão definidos e validados com `terraform plan`; apenas o **dev** foi aplicado e testado ponta a ponta.
+- **hml** está definido e validado só com `terraform plan`. **dev** e **prod** foram aplicados e testados em execução (prod foi destruído depois do teste para evitar custo).
+- **Plano gratuito da AWS**: a conta de teste limita o backup do RDS a 1 dia (`db_backup_retention_days = 1` em `prod.tfvars`). Em conta paga, use 7 dias ou mais.
+- O **rollback automático** (circuit breaker) está ativo, mas não foi exercitado com um deploy ruim de propósito.
 - Rotação automática da senha do banco (Secrets Manager) como evolução.
 
 <p align="center">
