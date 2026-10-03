@@ -223,5 +223,5 @@ Observação: interface endpoints (ECR, SSM, Logs) **não** foram usados porque,
 - Rotação automática da senha do banco (Secrets Manager) como evolução.
 
 <p align="center">
-  Solução: Haniel Maia
+   Solução: Haniel Maia
 </p>
