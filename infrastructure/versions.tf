@@ -12,15 +12,15 @@ terraform {
     }
   }
 
-  # State local por padrão (um workspace por ambiente: terraform workspace select -or-create dev).
-  # Para state remoto, descomente e informe um bucket S3 existente:
-  # backend "s3" {
-  #   bucket       = "<bucket>"
-  #   key          = "simple-api/terraform.tfstate"
-  #   region       = "us-east-1"
-  #   use_lockfile = true
-  #   encrypt      = true
-  # }
+  # State remoto (bucket criado por infrastructure/bootstrap). Um workspace por ambiente:
+  # o state de cada um fica em env:/<workspace>/simple-api/terraform.tfstate
+  backend "s3" {
+    bucket       = "simple-api-tfstate-705942572148"
+    key          = "simple-api/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
+  }
 }
 
 provider "aws" {

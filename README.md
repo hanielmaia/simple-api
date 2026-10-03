@@ -62,13 +62,17 @@ O mesmo Terraform atende todos os ambientes; o que muda é a variável `expose_m
 ## Como executar
 
 ```bash
-cd infrastructure
+# 0) uma única vez: bucket S3 do state remoto (versionado, criptografado, sem acesso público)
+cd infrastructure/bootstrap && terraform init && terraform apply && cd ..
+
 terraform init
-terraform workspace select -or-create dev          # um workspace por ambiente (state local)
+terraform workspace select -or-create dev          # um workspace por ambiente; state em S3
 terraform apply -var-file=environments/dev.tfvars -target=module.ecr   # 1) cria o ECR
 # 2) publicar a imagem inicial (linux/amd64) com a tag "bootstrap"
 terraform apply -var-file=environments/dev.tfvars                      # 3) restante
 ```
+
+Para ativar alarmes CloudWatch e o AWS Budget, crie `infrastructure/local.auto.tfvars` (ignorado pelo Git, para não publicar o e-mail) com `alert_email = "voce@exemplo.com"`. O SNS envia um e-mail de confirmação de assinatura que precisa ser aceito.
 
 Depois configure a variável `AWS_ROLE_ARN` no GitHub com o output `github_deploy_role_arn`; a partir daí o deploy é pelo pipeline. Teste: `GET <api_url>/` e `GET <api_url>/connect`.
 
@@ -121,14 +125,14 @@ Estimativas mensais aproximadas (us-east-1, sem tráfego relevante). Valores de 
 | RDS `db.t3.micro` | ~US$ 12 single-AZ (Free Tier elegível); ~2x em Multi-AZ | Multi-AZ só em prod |
 | ECR / logs | centavos | Lifecycle (10 imagens) e retenção de logs de 14 dias |
 
-Outras medidas: tags `Project/Environment/Owner/ManagedBy` em todos os recursos (via `default_tags`), endpoint S3 gratuito para o pull de imagens sem passar pelo NAT, AWS Budget e alarmes opcionais (`alert_email`).
+Outras medidas: tags `Project/Environment/Owner/ManagedBy` em todos os recursos (via `default_tags`), endpoint S3 gratuito para o pull de imagens sem passar pelo NAT, AWS Budget (US$ 50/mês) e alarmes CloudWatch (CPU do ECS e do RDS, storage do RDS, 5xx do API Gateway/ALB) via SNS, ativos quando `alert_email` é informado.
 
 Observação: interface endpoints (ECR, SSM, Logs) **não** foram usados porque, em baixo tráfego, custam mais que um único NAT.
 
 ## Limitações conhecidas e próximos passos
 
 - **HTTPS no ALB**: sem domínio/certificado ACM, o ALB de prod serve só HTTP. O API Gateway já expõe HTTPS na URL padrão. Próximo passo: ACM + listener 443 com redirecionamento do 80.
-- **State local** (um workspace por ambiente). Em produção: backend S3 com lock e criptografia (bloco já preparado em `versions.tf`). A senha do banco fica no state, por isso ele não é versionado.
+- **State remoto** em S3 (versionado, criptografado, só TLS, lock nativo), um workspace por ambiente; o bucket é criado por `infrastructure/bootstrap`. A senha do banco fica no state, por isso o bucket é privado e o state nunca é versionado no Git. O bucket de state em si usa state local (limitação do bootstrap).
 - **WAF** na frente do ALB/API Gateway não implementado.
 - **Deploy do Terraform** é manual; a pipeline faz apenas `fmt`, `validate` e Checkov. Um job de `plan`/`apply` exigiria uma role separada de maior privilégio.
 - **hml** está definido e validado só com `terraform plan`. **dev** e **prod** foram aplicados e testados em execução (prod foi destruído depois do teste para evitar custo).
