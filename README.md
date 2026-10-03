@@ -28,31 +28,111 @@ O mesmo Terraform atende todos os ambientes; o que muda é a variável `expose_m
 
 **Por quê:** o ALB dá health check por target, connection draining e rolling deploy sem queda, que é o que prod precisa. O API Gateway elimina o custo fixo do ALB (diferencial FinOps do desafio) mas roteia por DNS (Cloud Map), sem draining nem health check no nível do balanceador, o que é aceitável fora de produção. A decisão é consciente e está no código (`expose_mode`), não em duas bases de código.
 
-## Arquitetura
+## 5.1 Arquitetura (diagrama e decisões)
+
+Região `us-east-1`, 2 Zonas de Disponibilidade. CIDRs de exemplo do dev (`10.100.0.0/16`); hml usa `10.110.0.0/16` e prod `10.120.0.0/16`.
 
 ```
-                    Internet
-                       │
-        ┌──────────────┴───────────────┐
-        │ prod: ALB (subnets públicas)  │   dev/hml: API Gateway HTTP API
-        └──────────────┬───────────────┘            │ VPC Link
-                       │                      Cloud Map (SRV)
-                       ▼                            ▼
-        ┌─────────────────────────────────────────────────┐
-        │  ECS Fargate · subnets PRIVADAS (2 AZs)          │
-        │  task: simple-api (usuário não-root)             │
-        └───────────────┬───────────────┬─────────────────┘
-                        │ 5432 (TLS)    │ 443 via NAT
-                        ▼               ▼
-              RDS PostgreSQL        ECR · SSM · CloudWatch Logs
-              (subnets privadas)    (+ endpoint S3 gratuito)
+                                  INTERNET
+                                      │
+        ┌─────────────────────────────┴──────────────────────────────┐
+        │ dev/hml: API Gateway (HTTP API, HTTPS)  ·  prod: ALB (:80)   │
+        └─────────────────────────────┬──────────────────────────────┘
+                                      │ dev/hml: VPC Link → Cloud Map  ·  prod: listener → target group
+ ┌─ VPC 10.100.0.0/16 ────────────────┼─────────────────────────────────────────────┐
+ │                                    │                                              │
+ │  AZ us-east-1a                     │                      AZ us-east-1b           │
+ │ ┌─ subnet PÚBLICA 10.100.1.0/24 ─┐ │ ┌─ subnet PÚBLICA 10.100.2.0/24 ─┐           │
+ │ │  ALB (prod) · NAT Gateway      │ │ │  ALB (prod) · NAT (só em prod)  │  ← IGW   │
+ │ │  [SG-ALB: entra 80/0.0.0.0/0]  │ │ │                                 │           │
+ │ └────────────────────────────────┘ │ └─────────────────────────────────┘           │
+ │ ┌─ subnet PRIVADA 10.100.11.0/24 ┐ │ ┌─ subnet PRIVADA 10.100.12.0/24 ┐           │
+ │ │  ECS Fargate · task simple-api │◄┼►│  ECS Fargate · task simple-api  │           │
+ │ │  [SG-ECS: entra 3000 só do     │ │ │  (prod: 2 a 4 tasks, uma por AZ)│           │
+ │ │   SG-ALB / SG-VPCLink]         │ │ │                                 │           │
+ │ └───────────────┬────────────────┘ │ └────────────────┬────────────────┘           │
+ │                 │ 5432 (TLS)       │                  │                            │
+ │ ┌───────────────▼──────────────────┴──────────────────▼───────────────┐            │
+ │ │ RDS PostgreSQL (subnets privadas) · [SG-RDS: entra 5432 só do SG-ECS]│            │
+ │ │ prod: Multi-AZ (primário em uma AZ, standby síncrono na outra)       │            │
+ │ └──────────────────────────────────────────────────────────────────────┘            │
+ └─────────────────────────────────────────────────────────────────────────────────────┘
+   Saída das tasks (ECR, SSM, Logs) via NAT; pull de camadas do ECR via endpoint S3 gratuito.
 ```
 
-- **VPC nova e isolada**, 2 AZs, subnets públicas (ALB/NAT) e privadas (ECS/RDS). Internet Gateway + NAT.
-- **Security Groups encadeados**: entrada → ECS (3000) → RDS (5432). Nenhum recurso privado tem IP público.
-- **Segredos**: senha do banco gerada pelo Terraform (`random_password`), guardada como `SecureString` no Parameter Store e injetada na task como `secret`. Nunca em tfvars ou imagem.
-- **IAM least privilege**: execution role lê só os parâmetros desta app; task role sem permissões; role da pipeline limitada a ECR push do repo, update do service e `iam:PassRole` das duas roles.
-- **CI/CD sem chaves estáticas**: GitHub Actions assume a role via OIDC, restrita ao repo e à branch `main`.
+**Caminho do tráfego (internet → banco):** cliente → (API Gateway + VPC Link, ou ALB) → **SG de entrada** → task ECS na porta 3000 → **SG-RDS** → PostgreSQL na 5432 com TLS. Cada salto só aceita o SG do salto anterior (nunca `0.0.0.0/0`), e o único recurso com entrada pública é a borda (API Gateway ou ALB).
+
+**Security Groups:**
+
+| SG | Entrada | Saída |
+|---|---|---|
+| ALB (prod) | 80 de `0.0.0.0/0` | 3000 para a VPC |
+| VPC Link (dev/hml) | nenhuma | 3000 para a VPC |
+| ECS | 3000 **somente** do SG de entrada (ALB ou VPC Link) | 443 (ECR/SSM/Logs via NAT), 5432 e DNS para a VPC |
+| RDS | 5432 **somente** do SG do ECS | nenhuma |
+
+**Trade-offs (custo × resiliência × complexidade):**
+
+| Decisão | Ganho | Custo / risco |
+|---|---|---|
+| API Gateway + Cloud Map em dev/hml | Sem custo fixo de ALB (~US$ 16–22/mês), perto do Free Tier | Roteamento por DNS: sem draining nem health check no balanceador; configuração do VPC Link mais delicada |
+| ALB em prod | Health check por target, draining, rolling deploy sem queda | Custo fixo mensal |
+| NAT único fora de prod | ~US$ 33/mês economizados por NAT | Ponto único de falha de saída (aceitável em dev/hml) |
+| NAT por AZ em prod | Saída sobrevive à queda de uma AZ | ~US$ 33/mês a mais por AZ |
+| Fargate (sem EC2) | Sem servidores para patchear | Preço por vCPU maior que EC2 |
+| Módulos Terraform pequenos | Reuso e leitura | Mais arquivos e indireção |
+
+## 5.2 Plano de Autoscaling
+
+Implementado no módulo `ecs` (`aws_appautoscaling_target` + `aws_appautoscaling_policy`) e ativado por ambiente em `environments/*.tfvars`.
+
+| Parâmetro | Valor | Observação |
+|---|---|---|
+| Tipo | **Target Tracking** | A AWS cria e gerencia os alarmes |
+| Métrica | `ECSServiceAverageCPUUtilization` | Aplicação leve e stateless: CPU é um bom sinal de carga |
+| Alvo | **60% de CPU média** | Margem para absorver picos enquanto novas tasks sobem |
+| Mínimo | **2 tasks** (prod) | Uma por AZ: sobrevive à queda de uma zona |
+| Máximo | **4 tasks** (prod) | Teto de custo e proteção contra surtos |
+| Scale-out | cooldown de **60 s** | Reage rápido; em geral dispara com CPU acima do alvo por ~3 min |
+| Scale-in | cooldown de **120 s** | Mais conservador, para evitar oscilação; só reduz com CPU bem abaixo do alvo por ~15 min |
+| dev / hml | **Sem autoscaling** (1 task fixa, Spot, desligada à noite) | Prioriza custo; não há carga real |
+
+**Como o roteamento acompanha o scaling:**
+- **prod (ALB):** o ECS Service está associado ao **target group** (`target_type = ip`). Cada task nova é **registrada sozinha** pelo ECS e só recebe tráfego depois de passar no health check (`GET /`, com *grace period* de 30 s). Ao reduzir, a task é removida do target group e o ALB faz *draining* de 30 s antes de encerrá-la.
+- **dev/hml (API Gateway):** o ECS registra a task no **Cloud Map** (registro SRV, TTL de 10 s) e a remove quando o health check do container falha. O VPC Link consulta o Cloud Map, então novas tasks entram na rotação em segundos, sem configuração manual.
+- O deploy usa 100% mínimo saudável / 200% máximo e **circuit breaker com rollback automático**.
+
+## 5.3 Plano de Disaster Recovery (ideia básica)
+
+**Objetivos (RPO = quanto dado se aceita perder; RTO = em quanto tempo o serviço volta):**
+
+| Cenário | Estratégia | RPO | RTO |
+|---|---|---|---|
+| Falha de uma **task** | ECS recria sozinho; com 2 tasks, o ALB segue servindo | 0 | ~0 (prod) / 1–2 min (dev) |
+| Falha de uma **AZ** | Tasks nas 2 AZs + **RDS Multi-AZ** (standby síncrono, failover automático) + NAT por AZ | ~0 | ~1–2 min |
+| **Deploy ruim** | Circuit breaker faz rollback para a revisão anterior | 0 | minutos |
+| Corrupção / exclusão de dados | **Restore do RDS por ponto no tempo** (backups automáticos) | até 5 min dentro da retenção | 30–60 min |
+| Falha da **região** | **Backup & restore** em outra região | **≤ 24 h** (snapshot diário copiado) | **1–2 h** |
+
+> Observação: a conta de teste (plano gratuito AWS) limita a retenção de backup a **1 dia**. Em conta paga, a retenção recomendada é de 7 a 35 dias (`db_backup_retention_days`). O Multi-AZ foi validado em prod (`MultiAZ=True`) e a queda de task foi testada (60/60 respostas 200).
+
+**Como recuperar a aplicação e os dados:**
+1. **Dados:** restaurar o RDS a partir do último snapshot (ou ponto no tempo) copiado para a região de recuperação.
+2. **Aplicação:** a imagem fica no ECR com tag imutável (SHA do commit); copiá-la para o ECR da região de recuperação (ou habilitar *ECR cross-region replication*).
+3. **Infraestrutura:** subir o **mesmo código Terraform** na região/conta de destino.
+4. **Entrada:** apontar o DNS para o novo endpoint (no momento a API usa a URL padrão da AWS).
+
+**Recriar em outra região ou conta com o mesmo Terraform** (idempotência e portabilidade):
+- Nada é fixo no código: região, AZs, CIDRs, nomes e tamanhos vêm de `environments/<env>.tfvars`. Para outra região, troca-se `region`, `availability_zones_*` e rodam-se os mesmos comandos de "Como executar".
+- Nomes são derivados de `projeto-ambiente`, e o state é isolado por workspace, então um novo ambiente não colide com o existente.
+- O que muda ao migrar: o **bucket de state** é regional (rodar `bootstrap` na nova região/conta), o **ECR** é regional (publicar a imagem de novo), a **senha do banco** é gerada de novo (e o dado vem do snapshot) e o **OIDC provider** é um por conta (`create_github_oidc_provider`).
+- Esse fluxo foi exercitado na prática: o **prod foi criado do zero, validado e destruído**, e dev e prod usam o mesmo código com tfvars diferentes.
+
+**Pendências para um DR completo (próximos passos):**
+- Variável `snapshot_identifier` no módulo `rds` para restaurar direto de um snapshot via Terraform (hoje o restore seria manual ou por ajuste do módulo).
+- **Replicação automática de backups entre regiões** (`aws_db_instance_automated_backups_replication` ou AWS Backup), que levaria o RPO de regiões de 24 h para poucos minutos.
+- **Teste periódico de restauração** (backup sem teste não é garantia) e um runbook com os passos acima.
+- DNS (Route 53) com *failover* e ECR com replicação entre regiões.
 
 ## CI/CD
 
