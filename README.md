@@ -4,6 +4,8 @@
 
 # Simple-api — Desafio Técnico KXC
 
+### API em produção: https://79sxb1oepb.execute-api.us-east-1.amazonaws.com/ — rotas `/` e `/connect`.
+
 API Node.js + PostgreSQL provisionada na AWS 100% via Terraform, com CI/CD no GitHub Actions. A arquitetura foi desenhada em torno de três critérios: **organizada** (módulos reutilizáveis, um código para todos os ambientes), **segura** (rede privada, least privilege, sem chaves estáticas) e **resiliente** (Multi-AZ, rollback automático, autoscaling), sem abrir mão de **FinOps**.
 
 ```
